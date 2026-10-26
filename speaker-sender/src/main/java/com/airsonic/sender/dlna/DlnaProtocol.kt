@@ -1,0 +1,114 @@
+// Copyright (c) 2026 Chunguang Wei (https://github.com/chunguangwei)
+// Licensed under the PolyForm Noncommercial License 1.0.0 — noncommercial use only.
+// Commercial use requires prior written consent: chunguangwee@gmail.com. See LICENSE.
+
+package com.airsonic.sender.dlna
+
+/** DLNA/UPnP 纯协议逻辑（无 Android 依赖，便于 JVM 单测）。 */
+
+/** DLNA 内容特征串：OP=01 支持 byte-range/seek；与 LocalMediaHttpServer 的 contentFeatures 头一致。 */
+const val DLNA_CONTENT_FEATURES = "DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+
+/** 实时直播流特征串：OP=00 声明不可 seek——诱导渲染器少建缓冲，降低直播延迟。 */
+const val DLNA_CONTENT_FEATURES_LIVE = "DLNA.ORG_OP=00;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+
+/** XML 文本转义（5 个实体）。 */
+fun escapeXml(s: String): String = buildString(s.length + 16) {
+    for (c in s) when (c) {
+        '&' -> append("&amp;")
+        '<' -> append("&lt;")
+        '>' -> append("&gt;")
+        '"' -> append("&quot;")
+        '\'' -> append("&apos;")
+        else -> append(c)
+    }
+}
+
+/** 秒 → H:MM:SS（UPnP REL_TIME）。 */
+fun secToHms(sec: Double): String {
+    val total = sec.toLong().coerceAtLeast(0)
+    val h = total / 3600
+    val m = (total % 3600) / 60
+    val s = total % 60
+    return "%d:%02d:%02d".format(h, m, s)
+}
+
+/** H:MM:SS → 秒；空/NOT_IMPLEMENTED/非法 → 0.0。 */
+fun hmsToSec(hms: String): Double {
+    val t = hms.trim()
+    if (t.isEmpty() || t.equals("NOT_IMPLEMENTED", true)) return 0.0
+    val parts = t.split(":")
+    return runCatching {
+        when (parts.size) {
+            3 -> parts[0].toLong() * 3600 + parts[1].toLong() * 60 + parts[2].toDouble()
+            2 -> parts[0].toLong() * 60 + parts[1].toDouble()
+            1 -> parts[0].toDouble()
+            else -> 0.0
+        }
+    }.getOrDefault(0.0)
+}
+
+/**
+ * 最小 DIDL-Lite 元数据（title/url 已转义）。
+ * [sizeBytes] > 0 时写入 `<res size>`，严格渲染器用它做缓冲/seek 决策（DLNA 推荐）。
+ */
+fun buildDidl(title: String, url: String, mime: String, isVideo: Boolean, sizeBytes: Long? = null,
+              contentFeatures: String = DLNA_CONTENT_FEATURES): String {
+    val cls = if (isVideo) "object.item.videoItem" else "object.item.audioItem.musicTrack"
+    val proto = "http-get:*:$mime:$contentFeatures"
+    val sizeAttr = if (sizeBytes != null && sizeBytes > 0) """ size="$sizeBytes"""" else ""
+    return """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" """ +
+        """xmlns:dc="http://purl.org/dc/elements/1.1/" """ +
+        """xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">""" +
+        """<item id="0" parentID="-1" restricted="1">""" +
+        """<dc:title>${escapeXml(title)}</dc:title>""" +
+        """<upnp:class>$cls</upnp:class>""" +
+        """<res protocolInfo="${escapeXml(proto)}"$sizeAttr>${escapeXml(url)}</res>""" +
+        """</item></DIDL-Lite>"""
+}
+
+const val AVTRANSPORT = "urn:schemas-upnp-org:service:AVTransport:1"
+const val RENDERING_CONTROL = "urn:schemas-upnp-org:service:RenderingControl:1"
+
+/** SOAPACTION 头值（含外层引号）。 */
+fun soapAction(action: String, serviceType: String = AVTRANSPORT): String = "\"$serviceType#$action\""
+
+/** 完整 SOAP 信封；paramsXml 为动作参数（不含 InstanceID，函数自动加）。 */
+fun soapBody(action: String, paramsXml: String, serviceType: String = AVTRANSPORT): String =
+    """<?xml version="1.0" encoding="utf-8"?>""" +
+    """<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" """ +
+    """s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>""" +
+    """<u:$action xmlns:u="$serviceType"><InstanceID>0</InstanceID>$paramsXml</u:$action>""" +
+    """</s:Body></s:Envelope>"""
+
+/** SetAVTransportURI 的参数：URI 转义 + DIDL 用 CDATA 包裹。 */
+fun setAvTransportUriParams(url: String, didl: String): String =
+    "<CurrentURI>${escapeXml(url)}</CurrentURI>" +
+    "<CurrentURIMetaData><![CDATA[$didl]]></CurrentURIMetaData>"
+
+private fun tag(xml: String, name: String): String? =
+    Regex("<$name>(.*?)</$name>", RegexOption.DOT_MATCHES_ALL).find(xml)?.groupValues?.get(1)
+
+/** 从 GetPositionInfo 响应取 (pos秒, dur秒)；两字段都缺返回 null。 */
+fun parsePositionInfo(xml: String): Pair<Double, Double>? {
+    val rel = tag(xml, "RelTime")
+    val dur = tag(xml, "TrackDuration")
+    if (rel == null && dur == null) return null
+    return hmsToSec(rel ?: "") to hmsToSec(dur ?: "")
+}
+
+/** 从 GetTransportInfo 响应解析 CurrentTransportState（PLAYING/STOPPED/TRANSITIONING/NO_MEDIA_PRESENT...）。失败 null。 */
+fun parseTransportState(xml: String): String? =
+    Regex("<CurrentTransportState>([^<]*)</CurrentTransportState>").find(xml)?.groupValues?.get(1)?.trim()?.ifEmpty { null }
+
+/** 若 body 是 SOAP Fault，返回 "errorCode errorDescription"；否则 null。 */
+fun parseSoapError(xml: String): String? {
+    if (!xml.contains("Fault")) return null
+    val code = tag(xml, "errorCode") ?: return null
+    val desc = tag(xml, "errorDescription") ?: ""
+    return "$code $desc".trim()
+}
+
+/** 从 GetVolume 响应取 CurrentVolume（0..100）；缺/非法返回 null。 */
+fun parseCurrentVolume(xml: String): Int? =
+    Regex("<CurrentVolume>(\\d+)</CurrentVolume>").find(xml)?.groupValues?.get(1)?.toIntOrNull()

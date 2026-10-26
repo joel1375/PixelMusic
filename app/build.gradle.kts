@@ -205,6 +205,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":speaker-sender"))
     // InnerTube dependencies merged
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

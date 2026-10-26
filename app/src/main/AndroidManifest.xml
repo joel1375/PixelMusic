@@ -38,6 +38,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <application
         android:name=".PixelMusicApplication"
         android:allowBackup="true"
@@ -357,6 +358,8 @@
             android:name="com.snap.kit.clientId"
             android:value="cb161c07-2ed5-4064-87b0-f8dedf684849" />
 
+        <service android:name=".data.service.speakers.SpeakerStreamService"
+            android:exported="false" android:foregroundServiceType="mediaPlayback" />
     </application>
 
 </manifest>

@@ -42,3 +42,5 @@ include(":app")
 include(":shared")
 include(":wear")
 include(":baselineprofile")
+
+include(":speaker-sender")

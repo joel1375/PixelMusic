@@ -1,5 +1,8 @@
 package com.unshoo.pixelmusic.data.service.player
 
+import com.unshoo.pixelmusic.data.service.speakers.NetworkSpeakers
+import com.unshoo.pixelmusic.data.service.speakers.SpeakerAudioProcessor
+import androidx.media3.common.audio.SonicAudioProcessor
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -101,6 +104,7 @@ class DualPlayerEngine @Inject constructor(
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     var hiFiModeEnabled: Boolean = false
         private set
+    private var speakerRouting = false
     private var audioOffloadEnabled = !shouldDisableAudioOffloadByDefault()
     private var transitionJob: Job? = null
     private var bufferingFallbackJob: Job? = null
@@ -404,6 +408,17 @@ class DualPlayerEngine @Inject constructor(
     init {
         initialize()
         scope.launch {
+            NetworkSpeakers.routing.collect { enabled ->
+                if (speakerRouting != enabled && !isReleased) {
+                    speakerRouting = enabled
+                    transitionJob?.cancel()
+                    transitionRunning = false
+                    cancelNext()
+                    rebuildPlayersPreservingMasterState("Wi-Fi speaker route changed")
+                }
+            }
+        }
+        scope.launch {
             userPreferencesRepository.audioOffloadEnabledFlow.collect { enabled ->
                 if (audioOffloadEnabled != enabled) {
                     audioOffloadEnabled = enabled
@@ -590,7 +605,7 @@ class DualPlayerEngine @Inject constructor(
         playerA.addAnalyticsListener(masterPlayerListener)
         playerA.volume = volume
         playerA.pauseAtEndOfMediaItems = pauseAtEnd
-        playerA.playbackParameters = playbackParameters
+        playerA.playbackParameters = if (speakerRouting) PlaybackParameters.DEFAULT else playbackParameters
 
         if (mediaItems.isNotEmpty()) {
             playerA.setMediaItems(mediaItems, currentIndex, positionMs)
@@ -624,12 +639,18 @@ class DualPlayerEngine @Inject constructor(
                 enableAudioOutputPlaybackParams: Boolean
             ): AudioSink {
                 return DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(hiFiModeEnabled)
+                    .setEnableFloatOutput(hiFiModeEnabled && !speakerRouting)
                     .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
                     .setAudioProcessorChain(
                         DefaultAudioSink.DefaultAudioProcessorChain(
-                            HiResSampleRateCapAudioProcessor(),
-                            SurroundDownmixProcessor()
+                            *buildList<androidx.media3.common.audio.AudioProcessor> {
+                                add(HiResSampleRateCapAudioProcessor())
+                                add(SurroundDownmixProcessor())
+                                if (speakerRouting) {
+                                    add(SonicAudioProcessor().apply { setOutputSampleRateHz(44100) })
+                                    add(SpeakerAudioProcessor())
+                                }
+                            }.toTypedArray()
                         )
                     )
                     .build()
@@ -665,7 +686,7 @@ class DualPlayerEngine @Inject constructor(
             ) {
                 // Audio-only player: skip camera motion renderers.
             }
-        }.setEnableAudioFloatOutput(hiFiModeEnabled)
+        }.setEnableAudioFloatOutput(hiFiModeEnabled && !speakerRouting)
          .setMediaCodecSelector(mediaCodecSelector)
          .setEnableDecoderFallback(true)
          .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
@@ -732,10 +753,24 @@ class DualPlayerEngine @Inject constructor(
             .setMediaSourceFactory(DefaultMediaSourceFactory(resolvingFactory, extractorsFactory))
             .setLoadControl(loadControl)
             .build().apply {
+            addListener(object : Player.Listener {
+                override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+                    if (speakerRouting && playbackParameters != PlaybackParameters.DEFAULT) {
+                        this@apply.playbackParameters = PlaybackParameters.DEFAULT
+                    }
+                }
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (::playerA.isInitialized && this@apply === playerA) NetworkSpeakers.sourcePlaying = isPlaying
+                    if (!isPlaying && speakerRouting) NetworkSpeakers.clearAudio()
+                }
+                override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                    if (speakerRouting) NetworkSpeakers.clearAudio()
+                }
+            })
             setAudioAttributes(audioAttributes, false)
             val offloadPreferences = TrackSelectionParameters.AudioOffloadPreferences.Builder()
                 .setAudioOffloadMode(
-                    if (audioOffloadEnabled) {
+                    if (audioOffloadEnabled && !speakerRouting) {
                         TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED
                     } else {
                         TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
@@ -756,6 +791,7 @@ class DualPlayerEngine @Inject constructor(
     }
 
     fun getNextTransitionTarget(currentMediaItem: MediaItem, repeatMode: Int): TransitionTarget? {
+        if (speakerRouting) return null
         val snapshot = ensureQueueSnapshot()
         if (snapshot.isEmpty()) return null
 
@@ -969,6 +1005,7 @@ class DualPlayerEngine @Inject constructor(
     }
 
     fun performTransition(settings: TransitionSettings) {
+        if (speakerRouting) return
         transitionJob?.cancel()
         transitionRunning = true
         transitionJob = scope.launch {
@@ -1200,6 +1237,7 @@ class DualPlayerEngine @Inject constructor(
     }
 
     fun release() {
+        NetworkSpeakers.disconnectAll()
         transitionJob?.cancel()
         preResolutionJob?.cancel()
         cancelAudioOffloadFallback()
