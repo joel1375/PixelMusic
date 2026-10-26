@@ -12,7 +12,7 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21) } }
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
-    implementation("org.bouncycastle:bcprov-jdk15to18:1.76")
+    implementation(libs.bouncycastle.bcprov)
     implementation("androidx.core:core-ktx:1.19.0")
     testImplementation("junit:junit:4.13.2")
 }
