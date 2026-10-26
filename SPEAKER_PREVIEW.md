@@ -15,13 +15,13 @@ Audio comes from PixelMusic's playback pipeline, never the microphone or another
 app. Local and streaming sources use the same pipeline. The phone output is silent
 while network output is active. Playback remains at 1x, with 44.1 kHz stereo PCM,
 and crossfades/audio offload are disabled for that session. Original output settings
-are restored on disconnect. The speaker slider attenuates the sent signal; the
-speaker's own volume remains relevant. Device audio effects applied after decoding
+are restored on disconnect. For individual AirPlay/DLNA receivers the slider attenuates the sent signal;
+Sonos group sliders now control the rooms' native volume levels. Device audio effects applied after decoding
 are not included in this stream.
 
-This is an experimental integration, not certified AirPlay support. Multiple
-independent receivers are selectable but are NOT clock-synchronized. Creating or
-editing Sonos room groups is not implemented. Some receivers/firmware may reject
+This is an experimental integration, not certified AirPlay support. Sonos selections use native room grouping and a single coordinator stream.
+Other AirPlay/DLNA receivers support one-at-a-time output; mixed-brand synchronized
+groups are not implemented. Some receivers/firmware may reject
 pairing or WAV live streams. IPv4 LAN discovery is the primary supported path.
 Real Move, Play and Era 100 hardware validation is still required. Test play/pause,
 next, seek, screen-off playback, lost Wi-Fi, disconnect, and failed PIN pairing.
@@ -36,8 +36,8 @@ services requiring developer credentials may need separate build configuration.
 ## Player controls update
 
 The output button is now centered at the bottom of the expanded player, beneath
-a volume slider. For Wi-Fi output, the slider sets the digital level of all
-connected receivers (individual levels remain available in the picker). For
+a volume slider. For Sonos output, the slider sets all connected room volumes; individual levels
+remain available in the picker. For a single AirPlay receiver it sets digital gain. For
 Google Cast it controls route volume; for local/Bluetooth output it controls
 PixelMusic playback volume. The Sonos tab filters receivers identified by their
 manufacturer or advertised Sonos model, not all DLNA devices.
@@ -63,3 +63,29 @@ prewarm tree, keeps content width stable during expansion, and prepares delayed
 controls while hidden. The delivered speakerPreview variant is non-debuggable
 and release-optimized, retaining the test app's package ID. Actual frame-time
 improvements have not been measured on a physical device.
+
+
+## Native Sonos synchronization (preview 4)
+
+Selecting Sonos rooms now creates a native Sonos group and streams PCM only to
+one coordinator. Sonos distributes clock-synchronized audio to its members.
+Adding/removing a selected room serially stops the previous stream, detaches its
+selected rooms, verifies the new group and starts one new stream. This can briefly
+interrupt playback; it is not a seamless AirPlay 2 group handoff. Late changes
+supersede in-flight setup. Removing the coordinator chooses the next selected room.
+
+Existing Sonos room grouping is changed by this operation. Selected rooms are
+left standalone on disconnect rather than restored to their previous groups.
+Stereo pairs and surround satellites are treated as bonded rooms, not independently
+selectable speakers. Unselected visible rooms cannot pass group verification.
+The current stream URI is checked before stopping/ungrouping to avoid taking over
+playback started by another controller. If the group changes externally or the
+network fails, the app reports the failure and offers Re-sync Sonos. It does not
+silently fall back to unsynchronized streams. Sonos volume is read before playback
+and is not raised automatically when grouping.
+
+Validation still requires real Move/Play/Era hardware: add a room while playing,
+remove a follower, remove the coordinator, rapidly change selections, disconnect
+all, change groups in the Sonos app, lose Wi-Fi, and check individual/group volume.
+XML tests cover escaped SOAP topology, missing/extra rooms, wrong coordinators,
+bonded satellites and rejected external entities.

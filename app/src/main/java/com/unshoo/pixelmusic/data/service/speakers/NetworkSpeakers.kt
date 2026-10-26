@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 object NetworkSpeakers {
-    data class Connection(val device: AirDevice, val connected: Boolean = false, val volume: Float = 1f)
+    data class Connection(val device: AirDevice, val connected: Boolean = false, val volume: Float = 1f, val syncedGroup: Boolean = false, val connecting: Boolean = !connected)
     data class PinRequest(val id: String, val name: String)
     private val lock = Any()
     private val found = linkedMapOf<String, AirDevice>()
@@ -42,6 +42,11 @@ object NetworkSpeakers {
     private var airplay: AirplayDiscovery? = null
     private var dlna: DlnaDiscovery? = null
     private var app: Context? = null
+    private val sonosGroup = SonosGroupOutput(
+        onChanged = { synchronized(lock) { publish() } },
+        onError = { error.value = it },
+        isPlaying = { sourcePlaying }
+    )
 
     fun discover(context: Context) {
         app = context.applicationContext
@@ -75,7 +80,26 @@ object NetworkSpeakers {
     fun connect(context: Context, device: AirDevice) {
         val application = context.applicationContext
         app = application
+        if (device.type == DeviceType.SONOS) {
+            if (synchronized(lock) { workers.isNotEmpty() }) {
+                error.value = "Disconnect the current output first. Synchronized groups support Sonos rooms only."
+                return
+            }
+            error.value = null
+            sonosGroup.connect(device)
+            try {
+                application.startForegroundService(Intent(application, SpeakerStreamService::class.java))
+            } catch (e: Exception) {
+                sonosGroup.disconnect(device.host)
+                error.value = "Could not start Sonos playback: ${e.message}"
+            }
+            return
+        }
         synchronized(lock) {
+            if (sonosGroup.hasSelection() || workers.isNotEmpty()) {
+                error.value = "Synchronized multi-speaker output is available for Sonos rooms. Use one AirPlay/DLNA receiver at a time."
+                return
+            }
             if (workers.containsKey(device.host)) return
             // PIN prompts are serialized to keep pairing identities and requests unambiguous.
             if (workers.values.any { !it.ready }) {
@@ -96,18 +120,22 @@ object NetworkSpeakers {
         }
     }
 
-    fun disconnect(host: String) = synchronized(lock) {
-        workers.remove(host)?.cancel()
-        publish()
+    fun disconnect(host: String) {
+        if (sonosGroup.contains(host)) sonosGroup.disconnect(host)
+        else synchronized(lock) { workers.remove(host)?.cancel(); publish() }
     }
 
-    fun disconnectAll() = synchronized(lock) {
-        workers.values.forEach { it.cancel() }; workers.clear(); publish()
+    fun disconnectAll() {
+        synchronized(lock) { workers.values.forEach { it.cancel() }; workers.clear() }
+        sonosGroup.disconnectAll()
+        synchronized(lock) { publish() }
     }
 
-    fun setVolume(host: String, value: Float) = synchronized(lock) {
-        workers[host]?.gain = value.coerceIn(0f, 1f)
-        publish()
+    fun resyncSonos() { error.value = null; sonosGroup.resync() }
+
+    fun setVolume(host: String, value: Float) {
+        if (sonosGroup.contains(host)) sonosGroup.setVolume(host, value)
+        else synchronized(lock) { workers[host]?.gain = value.coerceIn(0f, 1f); publish() }
     }
 
     fun submitPin(value: String?) = synchronized(lock) {
@@ -115,15 +143,16 @@ object NetworkSpeakers {
     }
 
     fun offer(pcm: ByteArray) = synchronized(lock) {
+        if (sonosGroup.hasSelection()) sonosGroup.offer(pcm)
         workers.values.filter { it.ready }.forEach { it.queue.write(pcm) }
     }
 
-    fun clearAudio() = synchronized(lock) { workers.values.forEach { it.queue.clear() } }
+    fun clearAudio() = synchronized(lock) { sonosGroup.clearAudio(); workers.values.forEach { it.queue.clear() } }
 
     private fun publish() {
-        _connections.value = workers.values.map { Connection(it.device, it.ready, it.gain) }
-        _routing.value = workers.values.any { it.ready }
-        if (workers.isEmpty()) app?.stopService(Intent(app, SpeakerStreamService::class.java))
+        _connections.value = sonosGroup.snapshot() + workers.values.map { Connection(it.device, it.ready, it.gain) }
+        _routing.value = sonosGroup.hasSelection() || workers.values.any { it.ready }
+        if (_connections.value.isEmpty()) app?.stopService(Intent(app, SpeakerStreamService::class.java))
     }
 
     private class Worker(val context: Context, val device: AirDevice) {
@@ -256,3 +285,4 @@ object NetworkSpeakers {
         }
     }
 }
+

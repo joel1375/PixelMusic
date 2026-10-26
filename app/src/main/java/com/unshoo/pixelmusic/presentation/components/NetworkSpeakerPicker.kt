@@ -83,7 +83,10 @@ private fun NetworkSpeakerPickerContent(onUseGoogleCast: () -> Unit, beforeConne
                             Column(Modifier.weight(1f)) {
                                 Text(device.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(when {
+                                    connection?.syncedGroup == true -> "Sonos group · Connected"
                                     connection?.connected == true -> "Connected"
+                                    connection != null && !connection.connecting -> "Not connected · Try Re-sync Sonos"
+                                    connection != null && device.type == DeviceType.SONOS -> "Syncing Sonos group…"
                                     connection != null -> "Connecting…"
                                     device.type == DeviceType.SONOS -> "Sonos · Tap to connect"
                                     device.controlUrl != null -> "DLNA · Tap to connect"
@@ -91,7 +94,7 @@ private fun NetworkSpeakerPickerContent(onUseGoogleCast: () -> Unit, beforeConne
                                 }, style = MaterialTheme.typography.bodyMedium)
                             }
                             if (connection?.connected == true) Icon(Icons.Rounded.CheckCircle, "Connected", Modifier.size(24.dp))
-                            else if (connection != null) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                            else if (connection?.connecting == true) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                         }
                         if (connection?.connected == true) {
                             Slider(value = connection.volume, onValueChange = { NetworkSpeakers.setVolume(device.host, it) }, modifier = Modifier.semantics { contentDescription = "Volume for ${device.name}" })
@@ -99,7 +102,7 @@ private fun NetworkSpeakerPickerContent(onUseGoogleCast: () -> Unit, beforeConne
                         if (connection != null) OutlinedButton(
                             onClick = { NetworkSpeakers.disconnect(device.host) },
                             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
-                        ) { Text(if (connection.connected) "Disconnect" else "Cancel connection") }
+                        ) { Text(if (connection.connected) "Disconnect" else if (connection.connecting) "Cancel connection" else "Remove") }
                     }
                 }
             }
@@ -116,7 +119,10 @@ private fun NetworkSpeakerPickerContent(onUseGoogleCast: () -> Unit, beforeConne
             OutlinedButton(onClick = onUseGoogleCast, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Cast / Bluetooth") }
         }
         if (connections.isNotEmpty()) FilledTonalButton(onClick = { NetworkSpeakers.disconnectAll() }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Play on this phone") }
-        Text("Multiple speakers may play with different delays.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (connections.any { it.device.type == DeviceType.SONOS }) OutlinedButton(
+            onClick = { NetworkSpeakers.resyncSonos() }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
+        ) { Text("Re-sync Sonos") }
+        Text("Selected Sonos rooms form one synchronized group. Changing rooms may briefly pause music and changes their Sonos grouping. Other AirPlay speakers play individually.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Sender: AirSonic · PolyForm Noncommercial 1.0.0", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(bottom = 12.dp))
     }
     pairing?.let { request ->
@@ -130,3 +136,4 @@ private fun NetworkSpeakerPickerContent(onUseGoogleCast: () -> Unit, beforeConne
         )
     }
 }
+
