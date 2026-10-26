@@ -23,40 +23,54 @@ internal class SonosGroupOutput(
     private val selected = linkedMapOf<String, AirDevice>()
     private val volumes = mutableMapOf<String, Float>()
     private val pendingVolumes = mutableMapOf<String, Float>()
+    private var groupLevel = 0f
+    private var pendingGroupVolume: Float? = null
+    private var volumeRevision = 0L
+    private var lastVolumeEdit = 0L
     private var version = 0L
     private var readyVersion = -1L
     private var failedVersion = -1L
     private var threadStarted = false
     private val queue = PcmQueue()
     fun snapshot(): List<NetworkSpeakers.Connection> = synchronized(lock) {
-        selected.values.map { NetworkSpeakers.Connection(it, readyVersion == version, volumes[it.host] ?: 0f, syncedGroup = readyVersion == version, connecting = readyVersion != version && failedVersion != version) }
+        selected.values.map { NetworkSpeakers.Connection(it, readyVersion == version, volumes[it.host] ?: 0f, syncedGroup = readyVersion == version, groupVolume = groupLevel, connecting = readyVersion != version && failedVersion != version) }
     }
     fun hasSelection(): Boolean = synchronized(lock) { selected.isNotEmpty() }
     fun contains(host: String): Boolean = synchronized(lock) { selected.containsKey(host) }
     fun connect(device: AirDevice) {
         synchronized(lock) {
             if (selected.putIfAbsent(device.host, device) != null) return
-            version++; readyVersion = -1; lock.notifyAll()
+            version++; readyVersion = -1; pendingGroupVolume = null; lock.notifyAll()
             if (!threadStarted) { threadStarted = true; thread(name = "pixelmusic-sonos-group", isDaemon = true) { run() } }
         }
         onChanged()
     }
     fun disconnect(host: String) {
-        synchronized(lock) { if (selected.remove(host) == null) return; pendingVolumes.remove(host); version++; readyVersion = -1; lock.notifyAll() }
+        synchronized(lock) { if (selected.remove(host) == null) return; pendingVolumes.remove(host); version++; readyVersion = -1; pendingGroupVolume = null; lock.notifyAll() }
         onChanged()
     }
     fun disconnectAll() {
-        synchronized(lock) { if (selected.isEmpty()) return; selected.clear(); pendingVolumes.clear(); version++; readyVersion = -1; lock.notifyAll() }
+        synchronized(lock) { if (selected.isEmpty()) return; selected.clear(); pendingVolumes.clear(); version++; readyVersion = -1; pendingGroupVolume = null; lock.notifyAll() }
         queue.clear(); onChanged()
     }
     fun resync() {
-        synchronized(lock) { version++; readyVersion = -1; lock.notifyAll() }
+        synchronized(lock) { version++; readyVersion = -1; pendingGroupVolume = null; lock.notifyAll() }
         onChanged()
     }
     fun setVolume(host: String, value: Float) {
         synchronized(lock) {
             if (host !in selected) return
-            volumes[host] = value.coerceIn(0f, 1f); pendingVolumes[host] = value.coerceIn(0f, 1f); lock.notifyAll()
+            volumes[host] = value.coerceIn(0f, 1f); pendingVolumes[host] = value.coerceIn(0f, 1f)
+            volumeRevision++; lastVolumeEdit = SystemClock.elapsedRealtime(); lock.notifyAll()
+        }
+        onChanged()
+    }
+    fun setGroupVolume(value: Float) {
+        synchronized(lock) {
+            if (readyVersion != version || selected.isEmpty()) return
+            groupLevel = value.coerceIn(0f, 1f); pendingGroupVolume = groupLevel
+            pendingVolumes.clear()
+            volumeRevision++; lastVolumeEdit = SystemClock.elapsedRealtime(); lock.notifyAll()
         }
         onChanged()
     }
@@ -70,6 +84,7 @@ internal class SonosGroupOutput(
         var session: Session? = null
         var processed = -1L
         var lastCheck = 0L
+        var lastVolumePoll = 0L
         while (true) {
             val (generation, devices) = synchronized(lock) { version to selected.values.toList() }
             if (generation != processed) {
@@ -93,10 +108,22 @@ internal class SonosGroupOutput(
             }
             val active = session
             if (active != null && current(processed)) {
-                val changes = synchronized(lock) { pendingVolumes.toMap().also { pendingVolumes.clear() } }
+                val (groupChange, changes) = synchronized(lock) {
+                    (pendingGroupVolume to pendingVolumes.toMap()).also { pendingGroupVolume = null; pendingVolumes.clear() }
+                }
+                if (groupChange != null) {
+                    try { active.setGroupVolume(groupChange) }
+                    catch (_: Exception) { onError("Could not change Sonos group volume. Try again.") }
+                }
                 changes.forEach { (host, volume) ->
-                    try { active.controls[host]?.setVolume(volume) }
+                    try { if (current(processed)) active.controls[host]?.setVolume(volume) }
                     catch (_: Exception) { onError("Could not change speaker volume. Try again.") }
+                }
+                if (SystemClock.elapsedRealtime() - lastVolumePoll >= 1000) {
+                    lastVolumePoll = SystemClock.elapsedRealtime()
+                    // Pull actual levels, including changes made on the speaker or
+                    // in the Sonos app. Never overwrite a newer slider gesture.
+                    runCatching { active.refreshVolumes() }
                 }
                 if (SystemClock.elapsedRealtime() - lastCheck >= 3000) {
                     lastCheck = SystemClock.elapsedRealtime()
@@ -194,6 +221,23 @@ internal class SonosGroupOutput(
             }
             checkCurrent(generation)
             verify()
+            val initialGroupVolume = controls.getValue(leader.host).groupVolume()
+            synchronized(lock) { if (version == generation && pendingGroupVolume == null) groupLevel = initialGroupVolume }
+        }
+        fun setGroupVolume(value: Float) { controls.getValue(leader.host).setGroupVolume(value) }
+        fun refreshVolumes() {
+            val revision = synchronized(lock) {
+                if (pendingGroupVolume != null || pendingVolumes.isNotEmpty() || SystemClock.elapsedRealtime() - lastVolumeEdit < 500) return
+                volumeRevision
+            }
+            val actual = controls.mapValues { it.value.volume() }
+            val actualGroup = controls.getValue(leader.host).groupVolume()
+            val updated = synchronized(lock) {
+                if (version == generation && volumeRevision == revision && pendingGroupVolume == null && pendingVolumes.isEmpty()) {
+                    volumes.putAll(actual); groupLevel = actualGroup; true
+                } else false
+            }
+            if (updated) onChanged()
         }
         private fun groupVerified() = SonosGroupXml.verifiedGroup(controls.getValue(leader.host).topology(), ids.getValue(leader.host), ids.values.toSet())
         fun verify() {

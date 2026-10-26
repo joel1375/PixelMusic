@@ -96,8 +96,17 @@ private fun NetworkSpeakerPickerContent(onUseGoogleCast: () -> Unit, beforeConne
                             if (connection?.connected == true) Icon(Icons.Rounded.CheckCircle, "Connected", Modifier.size(24.dp))
                             else if (connection?.connecting == true) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                         }
-                        if (connection?.connected == true) {
-                            Slider(value = connection.volume, onValueChange = { NetworkSpeakers.setVolume(device.host, it) }, modifier = Modifier.semantics { contentDescription = "Volume for ${device.name}" })
+                        if (connection != null) {
+                            Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(if (device.type == DeviceType.SONOS) "Speaker volume" else "Stream level", style = MaterialTheme.typography.labelLarge)
+                                Text(if (connection.connected) "${kotlin.math.round(connection.volume * 100).toInt()}%" else "Waiting for connection", style = MaterialTheme.typography.labelLarge)
+                            }
+                            Slider(
+                                value = connection.volume,
+                                enabled = connection.connected,
+                                onValueChange = { NetworkSpeakers.setVolume(device.host, it) },
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics { contentDescription = "Volume for ${device.name}" }
+                            )
                         }
                         if (connection != null) OutlinedButton(
                             onClick = { NetworkSpeakers.disconnect(device.host) },

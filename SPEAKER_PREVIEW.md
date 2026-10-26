@@ -89,3 +89,13 @@ remove a follower, remove the coordinator, rapidly change selections, disconnect
 all, change groups in the Sonos app, lose Wi-Fi, and check individual/group volume.
 XML tests cover escaped SOAP topology, missing/extra rooms, wrong coordinators,
 bonded satellites and rejected external entities.
+
+## Native Sonos volume controls
+
+The player's master slider now uses Sonos GroupRenderingControl (snapshot +
+SetGroupVolume), preserving Sonos's relative room levels. Every selected speaker
+card has its own labeled slider and percentage, enabled once connected, using
+RenderingControl SetVolume on that room. Actual room and group volumes are read
+back periodically, so physical-button or Sonos-app changes appear in PixelMusic.
+New slider gestures take precedence over stale polling results. Other, non-Sonos
+AirPlay/DLNA outputs retain a clearly labeled stream-level control.

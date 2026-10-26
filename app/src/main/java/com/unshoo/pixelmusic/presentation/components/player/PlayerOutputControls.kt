@@ -34,7 +34,7 @@ internal fun PlayerOutputControls(viewModel: PlayerViewModel, onSelectOutput: ()
     val network = connections.isNotEmpty()
     val routeMax = (route?.volumeMax ?: 1).coerceAtLeast(1)
     val value = when {
-        network -> connected.maxOfOrNull { it.volume } ?: 0f
+        network -> connected.firstOrNull { it.syncedGroup }?.groupVolume ?: connected.maxOfOrNull { it.volume } ?: 0f
         remote -> routeVolume.toFloat() / routeMax
         else -> localVolume
     }.coerceIn(0f, 1f)
@@ -59,13 +59,13 @@ internal fun PlayerOutputControls(viewModel: PlayerViewModel, onSelectOutput: ()
                     enabled = enabled,
                     onValueChange = { volume ->
                         when {
-                            network -> connected.forEach { NetworkSpeakers.setVolume(it.device.host, volume) }
+                            network -> NetworkSpeakers.setGroupVolume(volume)
                             remote -> viewModel.setRouteVolume((volume * routeMax).roundToInt())
                             else -> viewModel.setTrackVolume(volume)
                         }
                     },
                     modifier = Modifier.weight(1f).height(48.dp).semantics {
-                        contentDescription = if (network) "Speaker volume" else "Playback volume"
+                        contentDescription = if (connected.any { it.syncedGroup }) "Sonos group volume" else if (network) "Stream level" else "Playback volume"
                     }
                 )
                 Icon(painterResource(R.drawable.rounded_volume_up_24), null, Modifier.size(20.dp))
@@ -82,3 +82,4 @@ internal fun PlayerOutputControls(viewModel: PlayerViewModel, onSelectOutput: ()
         }
     }
 }
+

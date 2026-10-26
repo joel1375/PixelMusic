@@ -101,6 +101,14 @@ internal class SonosGroupControl(val host: String) {
     }
     fun currentUri(): String = SonosGroupXml.value(request("/MediaRenderer/AVTransport/Control", "AVTransport", "GetMediaInfo", "<InstanceID>0</InstanceID>"), "CurrentURI")
     fun volume(): Float = SonosGroupXml.value(request("/MediaRenderer/RenderingControl/Control", "RenderingControl", "GetVolume", "<InstanceID>0</InstanceID><Channel>Master</Channel>"), "CurrentVolume").toInt().coerceIn(0, 100) / 100f
+    fun groupVolume(): Float {
+        request("/MediaRenderer/GroupRenderingControl/Control", "GroupRenderingControl", "SnapshotGroupVolume", "<InstanceID>0</InstanceID>")
+        return SonosGroupXml.value(request("/MediaRenderer/GroupRenderingControl/Control", "GroupRenderingControl", "GetGroupVolume", "<InstanceID>0</InstanceID>"), "CurrentVolume").toInt().coerceIn(0, 100) / 100f
+    }
+    fun setGroupVolume(value: Float) {
+        request("/MediaRenderer/GroupRenderingControl/Control", "GroupRenderingControl", "SnapshotGroupVolume", "<InstanceID>0</InstanceID>")
+        request("/MediaRenderer/GroupRenderingControl/Control", "GroupRenderingControl", "SetGroupVolume", "<InstanceID>0</InstanceID><DesiredVolume>${(value.coerceIn(0f, 1f) * 100).toInt()}</DesiredVolume>")
+    }
     fun setVolume(value: Float) {
         request("/MediaRenderer/RenderingControl/Control", "RenderingControl", "SetVolume", "<InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>${(value.coerceIn(0f, 1f) * 100).toInt()}</DesiredVolume>")
     }

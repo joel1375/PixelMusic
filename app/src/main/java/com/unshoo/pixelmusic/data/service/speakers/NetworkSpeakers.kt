@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 object NetworkSpeakers {
-    data class Connection(val device: AirDevice, val connected: Boolean = false, val volume: Float = 1f, val syncedGroup: Boolean = false, val connecting: Boolean = !connected)
+    data class Connection(val device: AirDevice, val connected: Boolean = false, val volume: Float = 1f, val syncedGroup: Boolean = false, val groupVolume: Float? = null, val connecting: Boolean = !connected)
     data class PinRequest(val id: String, val name: String)
     private val lock = Any()
     private val found = linkedMapOf<String, AirDevice>()
@@ -136,6 +136,11 @@ object NetworkSpeakers {
     fun setVolume(host: String, value: Float) {
         if (sonosGroup.contains(host)) sonosGroup.setVolume(host, value)
         else synchronized(lock) { workers[host]?.gain = value.coerceIn(0f, 1f); publish() }
+    }
+
+    fun setGroupVolume(value: Float) {
+        if (sonosGroup.hasSelection()) sonosGroup.setGroupVolume(value)
+        else synchronized(lock) { workers.values.forEach { it.gain = value.coerceIn(0f, 1f) }; publish() }
     }
 
     fun submitPin(value: String?) = synchronized(lock) {
