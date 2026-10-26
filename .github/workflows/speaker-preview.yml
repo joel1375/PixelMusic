@@ -21,6 +21,8 @@ jobs:
       - name: Inspect available Android SDK packages
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list | awk "/platforms;android-|build-tools;/"'
       - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: false
       - name: Test sender and build APK
         timeout-minutes: 10
         run: ./gradlew :speaker-sender:testDebugUnitTest :app:assembleDebug --stacktrace -Ppixelmusic.enableAbiSplits=true
@@ -29,7 +31,8 @@ jobs:
       - name: Verify APK
         run: |
           APK=app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
-          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose "$APK"
+          BUILD_TOOLS_VERSION="$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose "$APK"
       - uses: actions/upload-artifact@v7
         with:
           name: PixelMusic-speaker-preview-arm64
