@@ -1,6 +1,16 @@
 package com.unshoo.pixelmusic.presentation.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Speaker
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.airsonic.sender.api.DeviceType
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -41,41 +51,73 @@ private fun NetworkSpeakerPickerContent(onUseGoogleCast: () -> Unit, beforeConne
         NetworkSpeakers.discover(context)
         onDispose { NetworkSpeakers.stopDiscovery() }
     }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-        Text("Wi-Fi speakers", style = MaterialTheme.typography.headlineSmall)
-        Text("AirPlay · Sonos · DLNA", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-        Text("Connect on the same Wi-Fi. This preview supports individual receivers. Multiple receivers may play with different delays; synchronized AirPlay groups are not supported yet.", style = MaterialTheme.typography.bodySmall)
-        Row {
-            TextButton(onClick = { NetworkSpeakers.refresh(context) }) { Text("Scan again") }
-            TextButton(onClick = onUseGoogleCast) { Text("Cast / Bluetooth") }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val allDevices = (connections.map { it.device } + devices).distinctBy { it.host }
+    val visibleDevices = allDevices.filter { selectedTab == 0 || it.type == DeviceType.SONOS }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Choose a speaker", style = MaterialTheme.typography.headlineSmall)
+        Text("Play over Wi-Fi", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("All speakers", "Sonos").forEachIndexed { index, title ->
+                FilterChip(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index },
+                    label = { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Text(title) } },
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp)
+                )
+            }
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(connections, key = { "connected:${it.device.host}" }) { connection ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(connection.device.name, style = MaterialTheme.typography.titleMedium)
-                        Text(if (connection.connected) "Streaming · Wi-Fi" else "Connecting…")
-                        if (connection.connected) {
-                            Slider(value = connection.volume, onValueChange = { NetworkSpeakers.setVolume(connection.device.host, it) })
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(visibleDevices, key = { it.host }) { device ->
+                val connection = connections.firstOrNull { it.device.host == device.host }
+                Card(
+                    onClick = { if (connection == null) { beforeConnect(); NetworkSpeakers.connect(context, device) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = if (connection != null) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Icon(Icons.Rounded.Speaker, null, Modifier.size(32.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(device.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(when {
+                                    connection?.connected == true -> "Connected"
+                                    connection != null -> "Connecting…"
+                                    device.type == DeviceType.SONOS -> "Sonos · Tap to connect"
+                                    device.controlUrl != null -> "DLNA · Tap to connect"
+                                    else -> "AirPlay · Tap to connect"
+                                }, style = MaterialTheme.typography.bodyMedium)
+                            }
+                            if (connection?.connected == true) Icon(Icons.Rounded.CheckCircle, "Connected", Modifier.size(24.dp))
+                            else if (connection != null) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                         }
-                        TextButton(onClick = { NetworkSpeakers.disconnect(connection.device.host) }) { Text("Disconnect") }
+                        if (connection?.connected == true) {
+                            Slider(value = connection.volume, onValueChange = { NetworkSpeakers.setVolume(device.host, it) }, modifier = Modifier.semantics { contentDescription = "Volume for ${device.name}" })
+                        }
+                        if (connection != null) OutlinedButton(
+                            onClick = { NetworkSpeakers.disconnect(device.host) },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+                        ) { Text(if (connection.connected) "Disconnect" else "Cancel connection") }
                     }
                 }
             }
-            items(devices.filter { device -> connections.none { it.device.host == device.host } }, key = { it.id }) { device ->
-                OutlinedButton(onClick = { beforeConnect(); NetworkSpeakers.connect(context, device) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(device.name + if (device.controlUrl != null) " · Sonos / DLNA" else " · AirPlay")
+            if (visibleDevices.isEmpty()) item {
+                Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Rounded.Speaker, null, Modifier.size(40.dp))
+                    Text(if (selectedTab == 1) "Looking for Sonos speakers…" else "Looking for speakers…", style = MaterialTheme.typography.titleMedium)
+                    Text("Keep your speakers awake and on the same Wi-Fi.", style = MaterialTheme.typography.bodyMedium)
                 }
             }
-            if (devices.isEmpty() && connections.isEmpty()) item {
-                Text("Looking for speakers… Keep speakers awake and check that your Wi-Fi allows devices to communicate.", modifier = Modifier.padding(vertical = 16.dp))
-            }
         }
-        if (connections.isNotEmpty()) TextButton(onClick = { NetworkSpeakers.disconnectAll() }) { Text("Play on this phone") }
-        Text("Speaker output uses 44.1 kHz stereo. Crossfade and playback-speed changes are disabled while connected.", style = MaterialTheme.typography.bodySmall)
-        Text("Sender: AirSonic by Chunguang Wei · PolyForm Noncommercial 1.0.0", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(vertical = 8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { NetworkSpeakers.refresh(context) }, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Scan again") }
+            OutlinedButton(onClick = onUseGoogleCast, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Cast / Bluetooth") }
+        }
+        if (connections.isNotEmpty()) FilledTonalButton(onClick = { NetworkSpeakers.disconnectAll() }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Play on this phone") }
+        Text("Multiple speakers may play with different delays.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Sender: AirSonic · PolyForm Noncommercial 1.0.0", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(bottom = 12.dp))
     }
     pairing?.let { request ->
         var pin by remember(request.id) { mutableStateOf("") }

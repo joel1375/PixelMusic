@@ -93,7 +93,7 @@ class DlnaDiscovery(context: Context) {
             name = renderer.friendlyName,
             host = u.host,
             port = if (u.port > 0) u.port else 80,
-            type = DeviceType.DLNA,
+            type = if (com.airsonic.sender.dlna.isSonosDescription(xml)) DeviceType.SONOS else DeviceType.DLNA,
             controlUrl = renderer.avTransportControlUrl,
             renderingControlUrl = renderer.renderingControlUrl,
         )

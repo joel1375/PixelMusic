@@ -251,7 +251,7 @@ class AirplayDiscovery(context: Context) {
             model.startsWith("AppleTV", true) -> DeviceType.APPLE_TV
             model.startsWith("AudioAccessory", true) -> DeviceType.HOMEPOD
             model.startsWith("Mac", true) || model.startsWith("iMac", true) -> DeviceType.MAC
-            info.serviceName.contains("Sonos", true) -> DeviceType.SONOS
+            info.serviceName.contains("Sonos", true) || model.contains("Sonos", true) -> DeviceType.SONOS
             info.serviceName.contains("Xiaomi", true) || info.serviceName.contains("小米", true)
                 || model.startsWith("L16", true) -> DeviceType.XIAOMI
             else -> DeviceType.UNKNOWN

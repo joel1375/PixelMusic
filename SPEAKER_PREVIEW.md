@@ -32,3 +32,12 @@ not stable between runners; subsequent test builds may need reinstalling the tes
 app. Do not uninstall the user's original app or claim this is an in-place update.
 No original signing key or service API secrets are included. Telegram and other
 services requiring developer credentials may need separate build configuration.
+
+## Player controls update
+
+The output button is now centered at the bottom of the expanded player, beneath
+a volume slider. For Wi-Fi output, the slider sets the digital level of all
+connected receivers (individual levels remain available in the picker). For
+Google Cast it controls route volume; for local/Bluetooth output it controls
+PixelMusic playback volume. The Sonos tab filters receivers identified by their
+manufacturer or advertised Sonos model, not all DLNA devices.
