@@ -710,9 +710,7 @@ fun FullPlayerContent(
             }
         },
         bottomBar = {
-            if (currentSheetState == PlayerSheetState.EXPANDED) {
-                PlayerOutputControls(playerViewModel, onShowCastClicked)
-            }
+            PlayerOutputControls(playerViewModel, onShowCastClicked)
         },
         topBar = {
             // MD3: TopAppBar 在竖屏时滑入，横屏时向上滑出淡出
@@ -2347,9 +2345,18 @@ private fun DelayedContent(
         label = "DelayedPlaceholderBlendAlpha"
     )
 
+    // Prepare the real controls while the player is hidden; retain them across
+    // expand/collapse so opening the gate only changes draw-layer opacity.
+    var contentPrepared by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        snapshotFlow { expansionFractionProvider() <= 0.001f || isDelayGateOpen }.first { it }
+        kotlinx.coroutines.delay(120)
+        contentPrepared = true
+    }
+    LaunchedEffect(isDelayGateOpen) { if (isDelayGateOpen) contentPrepared = true }
     if (shouldDelay) {
         Box(modifier = sharedBoundsModifier) {
-            val shouldComposeContent = isDelayGateOpen
+            val shouldComposeContent = contentPrepared || isDelayGateOpen
 
             if (shouldComposeContent) {
                 Box(

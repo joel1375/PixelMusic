@@ -24,19 +24,19 @@ jobs:
         with:
           cache-read-only: false
       - name: Test sender and build APK
-        timeout-minutes: 15
-        run: ./gradlew :speaker-sender:testDebugUnitTest :app:assembleDebug --stacktrace -Ppixelmusic.enableAbiSplits=true -PAPP_VERSION_CODE=2 -PAPP_VERSION_NAME=1.0-speaker-preview-2
+        timeout-minutes: 25
+        run: ./gradlew :speaker-sender:testDebugUnitTest :app:assembleSpeakerPreview --stacktrace -Ppixelmusic.enableAbiSplits=true -PAPP_VERSION_CODE=3 -PAPP_VERSION_NAME=1.0-speaker-preview-3
       - name: Test audio queue
-        run: ./gradlew :app:testDebugUnitTest --tests 'com.unshoo.pixelmusic.data.service.speakers.PcmQueueTest' --stacktrace
+        run: ./gradlew :app:testDebugUnitTest --tests 'com.unshoo.pixelmusic.data.service.speakers.PcmQueueTest' --tests 'com.unshoo.pixelmusic.data.spotify.SpotifyTrackMatcherTest' --stacktrace
       - name: Verify APK
         run: |
-          APK=app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+          APK=app/build/outputs/apk/speakerPreview/app-arm64-v8a-speakerPreview.apk
           BUILD_TOOLS_VERSION="$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
           "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose "$APK"
       - uses: actions/upload-artifact@v7
         with:
           name: PixelMusic-speaker-preview-arm64
-          path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+          path: app/build/outputs/apk/speakerPreview/app-arm64-v8a-speakerPreview.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
         if: always()

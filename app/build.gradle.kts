@@ -122,6 +122,14 @@ android {
             )
         }
 
+        create("speakerPreview") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+        }
+
         create("benchmark") {
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")

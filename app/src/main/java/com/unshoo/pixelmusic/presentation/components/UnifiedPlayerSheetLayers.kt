@@ -1,5 +1,8 @@
 package com.unshoo.pixelmusic.presentation.components
 
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalDensity
 import androidx.annotation.OptIn
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
@@ -142,9 +145,12 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
                 val currentPlaybackQueue by playerViewModel.queueFlow
                     .collectAsStateWithLifecycle()
 
+                // Keep expanded content at its final size while the outer sheet
+                // clips and moves. Animated mini-player margins no longer remeasure it.
+                val expandedWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .requiredWidth(expandedWidth)
                         .requiredHeight(containerHeight)
                         .graphicsLayer {
                             // Read from FullPlayerVisualState lazy getters in the draw phase;

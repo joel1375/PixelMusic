@@ -41,3 +41,25 @@ connected receivers (individual levels remain available in the picker). For
 Google Cast it controls route volume; for local/Bluetooth output it controls
 PixelMusic playback volume. The Sonos tab filters receivers identified by their
 manufacturer or advertised Sonos model, not all DLNA devices.
+
+## Spotify import and animation update
+
+Settings now opens a Spotify importer with browser-based PKCE authorization.
+Register a Spotify developer app and enter its Client ID on the setup screen;
+register `pixelmusic-spotify://callback` as its redirect URI. No client secret is
+embedded. The developer app owner needs Spotify Premium and the importing account
+must be allowed in Users & Access. Tokens and temporary PKCE state are encrypted
+with Android Keystore in no-backup storage. Disconnect removes local credentials.
+
+Choose playlists, Liked Songs or saved albums (imported as playlists). The importer
+paginates Spotify results and matches title, primary artist and duration to local
+tracks or YouTube Music. It never transfers Spotify audio. Unmatched/unavailable
+tracks are counted; denied playlists are reported separately. Re-import merges
+tracks into the same imported playlist without overwriting unrelated playlists.
+Spotify authorization and account-specific import still need live testing.
+
+The player now retains one prepared content tree instead of discarding a separate
+prewarm tree, keeps content width stable during expansion, and prepares delayed
+controls while hidden. The delivered speakerPreview variant is non-debuggable
+and release-optimized, retaining the test app's package ID. Actual frame-time
+improvements have not been measured on a physical device.
