@@ -75,7 +75,7 @@ class SpotifyPlaybackService : Service() {
     private suspend fun refresh() {
         val info = spotify.playback()
         val track = info.optJSONObject("item")
-        if (info.optJSONObject("device")?.optString("id") != deviceId || track?.optString("uri") !in ownedUris) {
+        if (!ownsSpotifyPlayback(deviceId, ownedUris, info.optJSONObject("device")?.optString("id"), track?.optString("uri"))) {
             if (++mismatchCount < 3) return
             // Another app/device has taken over; relinquish control without pausing it.
             deviceId = ""; ownedUris = emptySet(); state.value = SpotifyRemoteState()
@@ -92,8 +92,7 @@ class SpotifyPlaybackService : Service() {
         try {
             if (deviceId.isNotBlank()) {
                 val info = spotify.playback()
-                if (info.optJSONObject("device")?.optString("id") == deviceId &&
-                    info.optJSONObject("item")?.optString("uri") in ownedUris) spotify.command("pause", deviceId)
+                if (ownsSpotifyPlayback(deviceId, ownedUris, info.optJSONObject("device")?.optString("id"), info.optJSONObject("item")?.optString("uri"))) spotify.command("pause", deviceId)
             }
             state.value = SpotifyRemoteState()
         } catch (e: Exception) { state.value = SpotifyRemoteState(error = "Could not stop Spotify over the network. Pause it in Spotify.") }

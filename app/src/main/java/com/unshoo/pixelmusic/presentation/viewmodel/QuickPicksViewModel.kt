@@ -35,7 +35,7 @@ private const val PREFS_NAME = "quick_picks_cache"
 private const val KEY_SONGS = "songs_json"
 private const val KEY_CATEGORIES = "categories_json"
 private const val KEY_CACHE_TIMESTAMP = "cache_timestamp"
-// Cache valid for 4 hours (shorter than before so new releases appear faster)
+// Keep discoveries stable inside an hour, then refresh at the next boundary.
 private const val CACHE_MAX_AGE_MS = 60 * 60 * 1000L
 
 @HiltViewModel
@@ -67,8 +67,11 @@ class QuickPicksViewModel @Inject constructor(
         // Immediately populate from cache so the UI shows something on relaunch
         loadFromCache()
         viewModelScope.launch {
-            userPreferencesRepository.discoverFlow.collect { _ ->
-                if (_selectedCategory.value == "All") {
+            userPreferencesRepository.discoverFlow.collect { preference ->
+                if (preference == QuickPicks.DONT_SHOW) {
+                    loadJob?.cancel()
+                    _quickPicks.value = emptyList()
+                } else if (_selectedCategory.value == "All") {
                     refreshIfDue()
                 }
             }
@@ -84,7 +87,7 @@ class QuickPicksViewModel @Inject constructor(
     fun refreshIfDue() {
         val now = System.currentTimeMillis()
         val cached = prefs.getLong(KEY_CACHE_TIMESTAMP, 0)
-        if (_quickPicks.value.isEmpty() || now / CACHE_MAX_AGE_MS != cached / CACHE_MAX_AGE_MS) {
+        if (com.unshoo.pixelmusic.data.discovery.HourlyDiscoveryPolicy.isDue(now, cached, _quickPicks.value.isEmpty())) {
             loadQuickPicks(_selectedCategory.value)
         }
     }

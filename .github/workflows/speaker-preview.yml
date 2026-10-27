@@ -27,7 +27,7 @@ jobs:
         timeout-minutes: 25
         run: ./gradlew :speaker-sender:testDebugUnitTest :app:assembleSpeakerPreview --stacktrace -Ppixelmusic.enableAbiSplits=true -PAPP_VERSION_CODE=5 -PAPP_VERSION_NAME=1.0-speaker-preview-5
       - name: Test audio queue
-        run: ./gradlew :app:testDebugUnitTest --tests 'com.unshoo.pixelmusic.data.service.speakers.PcmQueueTest' --tests 'com.unshoo.pixelmusic.data.spotify.SpotifyTrackMatcherTest' --tests 'com.unshoo.pixelmusic.data.service.speakers.SonosGroupXmlTest' --stacktrace
+        run: ./gradlew :app:testDebugUnitTest --tests 'com.unshoo.pixelmusic.data.service.speakers.PcmQueueTest' --tests 'com.unshoo.pixelmusic.data.spotify.SpotifyTrackMatcherTest' --tests 'com.unshoo.pixelmusic.data.service.speakers.SonosGroupXmlTest' --tests 'com.unshoo.pixelmusic.data.discovery.HourlyDiscoveryPolicyTest' --tests 'com.unshoo.pixelmusic.data.spotify.SpotifyPlaybackOwnershipTest' --stacktrace
       - name: Verify APK
         run: |
           APK=app/build/outputs/apk/speakerPreview/app-arm64-v8a-speakerPreview.apk
