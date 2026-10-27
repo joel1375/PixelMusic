@@ -1,5 +1,6 @@
 package com.unshoo.pixelmusic.presentation.screens
 
+import androidx.compose.material.icons.rounded.LibraryMusic
 import com.unshoo.pixelmusic.presentation.navigation.navigateSafely
 
 import androidx.compose.animation.core.Animatable
@@ -233,6 +234,16 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 4.dp)
+                )
+            }
+            item {
+                val spotifyContext = androidx.compose.ui.platform.LocalContext.current
+                ExpressiveNavigationItem(
+                    title = "Import from Spotify",
+                    subtitle = "Connect your account and copy your library",
+                    icon = androidx.compose.material.icons.Icons.Rounded.LibraryMusic,
+                    colors = Color(0xFF1DB954) to Color(0xFF003B18),
+                    onClick = { spotifyContext.startActivity(android.content.Intent(spotifyContext, com.unshoo.pixelmusic.SpotifyImportActivity::class.java)) }
                 )
             }
             item {

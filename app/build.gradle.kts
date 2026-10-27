@@ -122,6 +122,14 @@ android {
             )
         }
 
+        create("speakerPreview") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+        }
+
         create("benchmark") {
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")
@@ -205,6 +213,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":speaker-sender"))
     // InnerTube dependencies merged
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

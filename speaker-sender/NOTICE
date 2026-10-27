@@ -1,0 +1,5 @@
+AirSonic sender by Chunguang Wei.
+Source: https://github.com/chunguangwei/AirSonic
+Pinned revision: 97e98120686c0d96673e7f3138956450ee6c486c
+PolyForm Noncommercial 1.0.0; see LICENSE.
+Adapted for PixelMusic personal builds; Android build configuration and resource cleanup changed.

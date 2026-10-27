@@ -83,6 +83,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -180,6 +181,7 @@ fun CastBottomSheet(
     val isCastConnecting by playerViewModel.isCastConnecting.collectAsStateWithLifecycle()
     val trackVolume by playerViewModel.trackVolume.collectAsStateWithLifecycle()
     val isPlaying = playerViewModel.stablePlayerState.collectAsStateWithLifecycle().value.isPlaying
+    var showNetworkSpeakers by remember { mutableStateOf(true) }
     val context = LocalContext.current
 
     val requiredPermissions = remember {
@@ -359,7 +361,12 @@ fun CastBottomSheet(
                 modifier = Modifier
                     .padding(bottom = 18.dp)
             ) {
-                if (missingPermissions.isNotEmpty()) {
+                if (showNetworkSpeakers) {
+                    NetworkSpeakerPicker(
+                        onUseGoogleCast = { showNetworkSpeakers = false },
+                        beforeConnect = { if (isRemotePlaybackActive || isCastConnecting) playerViewModel.disconnect() }
+                    )
+                } else if (missingPermissions.isNotEmpty()) {
                     CastPermissionStep(
                         missingPermissions = missingPermissions,
                         onRequestPermissions = {
@@ -367,9 +374,12 @@ fun CastBottomSheet(
                         }
                     )
                 } else {
+                    Column {
+                    TextButton(onClick = { showNetworkSpeakers = true }) { Text("AirPlay / Sonos speakers") }
                     CastSheetContent(
                         state = uiState,
                         onSelectDevice = { id ->
+                            com.unshoo.pixelmusic.data.service.speakers.NetworkSpeakers.disconnectAll()
                             when {
                                 id.startsWith("bluetooth_") -> {
                                     val intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
@@ -406,6 +416,7 @@ fun CastBottomSheet(
                         },
                         startWithControls = isRemoteSession
                     )
+                    }
                 }
             }
         }

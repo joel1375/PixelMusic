@@ -7,6 +7,8 @@ package com.unshoo.pixelmusic.presentation.screens
 import com.unshoo.pixelmusic.presentation.navigation.navigateSafely
 import com.unshoo.pixelmusic.presentation.navigation.navigateSafelyReplacing
 
+import androidx.lifecycle.repeatOnLifecycle
+import com.unshoo.pixelmusic.presentation.components.LivingHomeBackground
 import android.content.Intent
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.foundation.background
@@ -234,26 +236,14 @@ fun HomeScreen(
             maxItems = 64
         )
     }
-    // Keep the visible Home snapshot stable and only refresh it once the screen is off-screen.
-    var recentlyPlayedSongs by rememberSaveable { mutableStateOf(latestRecentlyPlayedSongs) }
-    val latestRecentlyPlayedSongsState = rememberUpdatedState(latestRecentlyPlayedSongs)
+    val recentlyPlayedSongs = latestRecentlyPlayedSongs
 
-    LaunchedEffect(latestRecentlyPlayedSongs, lifecycleOwner) {
-        val isHomeVisible = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-        if (recentlyPlayedSongs.isEmpty() || !isHomeVisible) {
-            recentlyPlayedSongs = latestRecentlyPlayedSongs
-        }
-    }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                recentlyPlayedSongs = latestRecentlyPlayedSongsState.value
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                quickPicksViewModel.refreshIfDue()
+                delay(60_000L - System.currentTimeMillis() % 60_000L)
             }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -349,7 +339,9 @@ fun HomeScreen(
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
+        LivingHomeBackground()
         Scaffold(
+            containerColor = Color.Transparent,
             modifier = Modifier.fillMaxSize(),
             topBar = {
                 HomeGradientTopBar(
@@ -399,7 +391,7 @@ fun HomeScreen(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
+                    .background(Color.Transparent),
                 contentPadding = PaddingValues(
                     top = innerPadding.calculateTopPadding(),
                     bottom = paddingValuesParent.calculateBottomPadding()
@@ -412,6 +404,44 @@ fun HomeScreen(
                     contentType = "home_greeting"
                 ) {
                     HomeGreetingHeader(userName = userName)
+                    Text("Your music, a little more alive.", modifier = Modifier.padding(horizontal = 20.dp),
+                        style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                if (recentlyPlayedSongs.size >= RecentlyPlayedSectionMinSongsToShow) {
+                    item(
+                        key = "recently_played_section",
+                        contentType = "recently_played_section"
+                    ) {
+                        RecentlyPlayedSection(
+                            songs = recentlyPlayedSongs,
+                            onSongClick = { song ->
+                                if (recentlyPlayedQueue.isNotEmpty()) {
+                                    playerViewModel.playSongs(
+                                        songsToPlay = recentlyPlayedQueue,
+                                        startSong = song,
+                                        queueName = "Recently Played"
+                                    )
+                                }
+                            },
+                            onOpenAllClick = {
+                                navController.navigateSafely(Screen.RecentlyPlayed.route)
+                            },
+                            themeStateHolder = playerViewModel.themeStateHolder,
+                            currentSongId = currentSong?.id,
+                            contentPadding = PaddingValues(start = 8.dp, end = 24.dp)
+                        )
+                    }
+                }
+
+                item(key = "spotify_playback") {
+                    com.unshoo.pixelmusic.presentation.components.SpotifyPlaybackSection(
+                        onBeforePlay = {
+                            if (playerViewModel.stablePlayerState.value.isPlaying) playerViewModel.playPause()
+                            com.unshoo.pixelmusic.data.service.speakers.NetworkSpeakers.disconnectAll()
+                        },
+                        onSettings = { navController.navigateSafely(Screen.Settings.route) }
+                    )
                 }
 
                 // Quick Picks (above Your Mix, shown when there is engagement data)
@@ -420,7 +450,11 @@ fun HomeScreen(
                         key = "quick_picks_section",
                         contentType = "quick_picks_section"
                     ) {
+                        Column {
+                        Text("New discoveries, refreshed hourly", modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         QuickPicksSection(
+                            title = "Made for your next hour",
                             songs = quickPicks,
                             onSongClick = { song ->
                                 playerViewModel.showAndPlaySong(song, quickPicks, "Quick Picks")
@@ -431,6 +465,7 @@ fun HomeScreen(
                             currentSongId = currentSong?.id,
                             displayMode = quickPicksDisplayMode
                         )
+                        }
                     }
                 }
 
@@ -493,7 +528,7 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxWidth(),
                             songs = yourMixSongs,
                             padding = 14.dp,
-                            height = 400.dp,
+                            height = 250.dp,
                             pattern = activePattern,
                             onSongClick = { song ->
                                 if (usesFallbackHomeMix) {
@@ -531,32 +566,6 @@ fun HomeScreen(
                             },
                             onNavigateToGenre = {},
                             playerViewModel = playerViewModel
-                        )
-                    }
-                }
-
-                if (recentlyPlayedSongs.size >= RecentlyPlayedSectionMinSongsToShow) {
-                    item(
-                        key = "recently_played_section",
-                        contentType = "recently_played_section"
-                    ) {
-                        RecentlyPlayedSection(
-                            songs = recentlyPlayedSongs,
-                            onSongClick = { song ->
-                                if (recentlyPlayedQueue.isNotEmpty()) {
-                                    playerViewModel.playSongs(
-                                        songsToPlay = recentlyPlayedQueue,
-                                        startSong = song,
-                                        queueName = "Recently Played"
-                                    )
-                                }
-                            },
-                            onOpenAllClick = {
-                                navController.navigateSafely(Screen.RecentlyPlayed.route)
-                            },
-                            themeStateHolder = playerViewModel.themeStateHolder,
-                            currentSongId = currentSong?.id,
-                            contentPadding = PaddingValues(start = 8.dp, end = 24.dp)
                         )
                     }
                 }
@@ -1091,3 +1100,4 @@ fun HomeGreetingHeader(userName: String?) {
         )
     }
 }
+

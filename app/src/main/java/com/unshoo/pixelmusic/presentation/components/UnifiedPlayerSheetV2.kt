@@ -202,7 +202,6 @@ fun UnifiedPlayerSheetV2(
     val currentSheetContentState by playerViewModel.sheetState.collectAsStateWithLifecycle()
     val predictiveBackCollapseProgress by playerViewModel.predictiveBackCollapseFraction.collectAsStateWithLifecycle()
     val predictiveBackSwipeEdge by playerViewModel.predictiveBackSwipeEdge.collectAsStateWithLifecycle()
-    val prewarmFullPlayer = rememberPrewarmFullPlayer(infrequentPlayerState.currentSong?.id)
 
     val playerConfig by playerViewModel.playerConfigSlice.collectAsStateWithLifecycle()
     val navBarCornerRadius = sanitizeNavBarCornerRadius(playerConfig.navBarCornerRadius)
@@ -688,24 +687,7 @@ fun UnifiedPlayerSheetV2(
                     }
                 }
 
-                UnifiedPlayerPrewarmLayer(
-                    prewarmFullPlayer = prewarmFullPlayer && !shouldRenderFullPlayer,
-                    currentSong = infrequentPlayerState.currentSong,
-                    containerHeight = containerHeight,
-                    albumColorScheme = albumColorScheme,
-                    currentQueueSourceName = currentQueueSourceName,
-                    infrequentPlayerState = infrequentPlayerState,
-                    carouselStyle = carouselStyle,
-                    fullPlayerLoadingTweaks = fullPlayerLoadingTweaks,
-                    playerViewModel = playerViewModel,
-                    currentPositionProvider = positionToDisplayProvider,
-                    isCastConnecting = isCastConnecting,
-                    isFavorite = isFavorite,
-                    onShowQueueClicked = sheetActionHandlers.openQueueSheet,
-                    onQueueDragStart = sheetActionHandlers.beginQueueDrag,
-                    onQueueDrag = sheetActionHandlers.dragQueueBy,
-                    onQueueRelease = sheetActionHandlers.endQueueDrag
-                )
+
             }
 
             BackHandler(enabled = isQueueVisible && !internalIsKeyboardVisible) {

@@ -33,7 +33,7 @@ internal fun rememberFullPlayerCompositionPolicy(
     expansionFraction: Animatable<Float, AnimationVector1D>,
     collapsedWarmDelayMs: Long = 650L
 ): FullPlayerCompositionPolicy {
-    var keepFullPlayerComposed by remember(currentSongId) { mutableStateOf(false) }
+    var keepFullPlayerComposed by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentSongId, currentSheetState) {
         if (currentSongId == null) {

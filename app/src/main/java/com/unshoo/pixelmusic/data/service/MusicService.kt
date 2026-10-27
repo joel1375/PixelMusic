@@ -785,8 +785,15 @@ class MusicService : MediaLibraryService() {
                 query: String,
                 params: MediaLibraryService.LibraryParams?
             ): ListenableFuture<LibraryResult<Void>> {
-                // Signal that search is supported; results delivered via onGetSearchResult
-                return Futures.immediateFuture(LibraryResult.ofVoid())
+                return serviceScope.future {
+                    try {
+                        val count = autoMediaBrowseTree.search(query).size
+                        session.notifySearchResultChanged(browser, query, count, params)
+                        LibraryResult.ofVoid()
+                    } catch (e: Exception) {
+                        LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
+                    }
+                }
             }
 
             override fun onGetSearchResult(
@@ -1703,23 +1710,10 @@ class MusicService : MediaLibraryService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val player = mediaSession?.player
-        val allowBackground = keepPlayingInBackground
-
-        if (!allowBackground) {
-            stopPlaybackAndUnload(
-                reason = "task_removed_background_disabled"
-            )
-            return
-        }
-
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0 || player.playbackState == Player.STATE_ENDED) {
-            stopPlaybackAndUnload(
-                reason = "task_removed_not_playing"
-            )
-            return
-        }
-        super.onTaskRemoved(rootIntent)
+        // A deliberate swipe-away means stop, unlike locking the phone or Home.
+        com.unshoo.pixelmusic.data.service.speakers.NetworkSpeakers.disconnectAll()
+        observedCastSession?.remoteMediaClient?.pause()
+        stopPlaybackAndUnload(reason = "task_removed_by_user")
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = mediaSession
@@ -3466,3 +3460,4 @@ class MusicService : MediaLibraryService() {
         return future
     }
 }
+

@@ -38,7 +38,8 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "PixelMusic"
-include(":app")
-include(":shared")
-include(":wear")
-include(":baselineprofile")
+
+
+
+// Only Spotify ships; legacy modules are excluded from the build.
+include(":spotify")
