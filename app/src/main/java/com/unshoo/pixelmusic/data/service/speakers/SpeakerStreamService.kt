@@ -38,6 +38,10 @@ class SpeakerStreamService : Service() {
         }
         return START_NOT_STICKY
     }
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        NetworkSpeakers.disconnectAll()
+        stopSelf()
+    }
     override fun onDestroy() {
         NetworkSpeakers.disconnectAll()
         wakeLock?.let { if (it.isHeld) it.release() }
@@ -46,3 +50,4 @@ class SpeakerStreamService : Service() {
     }
     override fun onBind(intent: Intent?): IBinder? = null
 }
+

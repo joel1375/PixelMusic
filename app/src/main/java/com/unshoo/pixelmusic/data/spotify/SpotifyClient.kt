@@ -8,6 +8,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -22,7 +26,7 @@ import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
 
 data class SpotifyCollection(val id: String, val name: String, val path: String, val kind: String)
-data class SpotifyTrack(val title: String, val artist: String, val duration: Long)
+data class SpotifyTrack(val title: String, val artist: String, val duration: Long, val uri: String = "")
 
 @Singleton
 class SpotifyClient @Inject constructor(@ApplicationContext context: Context) {
@@ -52,7 +56,7 @@ class SpotifyClient @Inject constructor(@ApplicationContext context: Context) {
             .appendQueryParameter("client_id", id).appendQueryParameter("response_type", "code")
             .appendQueryParameter("redirect_uri", REDIRECT).appendQueryParameter("state", state)
             .appendQueryParameter("code_challenge_method", "S256").appendQueryParameter("code_challenge", challenge)
-            .appendQueryParameter("scope", "playlist-read-private playlist-read-collaborative user-library-read").build()
+            .appendQueryParameter("scope", "playlist-read-private playlist-read-collaborative user-library-read user-read-playback-state user-modify-playback-state").build()
     }
     suspend fun complete(uri: Uri) = withContext(Dispatchers.IO) {
         require(uri.scheme == "pixelmusic-spotify" && uri.host == "callback") { "Invalid Spotify callback." }
@@ -73,6 +77,7 @@ class SpotifyClient @Inject constructor(@ApplicationContext context: Context) {
             session.put("access_token", json.getString("access_token"))
                 .put("expires", System.currentTimeMillis() + json.optLong("expires_in", 3600) * 1000)
             if (json.has("refresh_token")) session.put("refresh_token", json.getString("refresh_token"))
+            if (json.has("scope")) session.put("scope", json.getString("scope"))
             save()
         }
     }
@@ -80,13 +85,18 @@ class SpotifyClient @Inject constructor(@ApplicationContext context: Context) {
         check(session.optString("refresh_token").isNotBlank()) { "Please reconnect Spotify." }
         exchange(FormBody.Builder().add("grant_type", "refresh_token").add("refresh_token", session.getString("refresh_token")).add("client_id", clientId).build())
     }
+    private val tokenLock = Mutex()
+    val canControlPlayback: Boolean get() = session.optString("scope").split(" ").contains("user-modify-playback-state")
+    private suspend fun accessToken(force: Boolean = false): String = tokenLock.withLock {
+        if (force || System.currentTimeMillis() + 60_000 >= session.optLong("expires")) refresh()
+        session.getString("access_token")
+    }
     private suspend fun get(url: String, retry: Boolean = true): JSONObject {
         coroutineContext.ensureActive()
         require(url.startsWith("https://api.spotify.com/v1/")) { "Unexpected Spotify page URL." }
-        if (System.currentTimeMillis() + 60_000 >= session.optLong("expires")) refresh()
-        val request = Request.Builder().url(url).header("Authorization", "Bearer ${session.getString("access_token")}").build()
+        val request = Request.Builder().url(url).header("Authorization", "Bearer ${accessToken()}").build()
         http.newCall(request).execute().use { response ->
-            if (response.code == 401 && retry) { refresh(); return get(url, false) }
+            if (response.code == 401 && retry) { accessToken(true); return get(url, false) }
             check(response.isSuccessful) {
                 when (response.code) {
                     403 -> "Spotify denied access. Add your account in the developer app's Users & Access. Only owned or collaborative playlists may be readable."
@@ -94,7 +104,7 @@ class SpotifyClient @Inject constructor(@ApplicationContext context: Context) {
                     else -> "Spotify request failed (${response.code}). Try again."
                 }
             }
-            return JSONObject(response.body!!.string())
+            return if (response.code == 204) JSONObject() else JSONObject(response.body!!.string())
         }
     }
     private suspend fun pages(path: String): List<JSONObject> {
@@ -134,10 +144,42 @@ class SpotifyClient @Inject constructor(@ApplicationContext context: Context) {
                 val artist = track.optJSONArray("artists")?.optJSONObject(0)?.optString("name").orEmpty()
                 val title = track.optString("name")
                 if (artist.isBlank() || title.isBlank()) { skipped++; null }
-                else SpotifyTrack(title, artist, track.optLong("duration_ms"))
+                else SpotifyTrack(title, artist, track.optLong("duration_ms"), track.optString("uri"))
             }
         }
         tracks to skipped
     }
+    suspend fun playback(): JSONObject = withContext(Dispatchers.IO) { get("https://api.spotify.com/v1/me/player") }
+    suspend fun devices(): List<SpotifyDevice> = withContext(Dispatchers.IO) {
+        val array = get("https://api.spotify.com/v1/me/player/devices").optJSONArray("devices")
+        (0 until (array?.length() ?: 0)).mapNotNull { i ->
+            val item = array!!.getJSONObject(i)
+            val id = item.optString("id")
+            if (id.isBlank() || id == "null" || item.optBoolean("is_restricted")) null
+            else SpotifyDevice(id, item.optString("name"), item.optBoolean("is_active"))
+        }
+    }
+    suspend fun command(action: String, device: String, body: JSONObject? = null, retry: Boolean = true): Unit = withContext(Dispatchers.IO) {
+        require(action in setOf("play", "pause", "next", "previous"))
+        check(canControlPlayback) { "Reconnect Spotify in Settings to allow playback control." }
+        val url = "https://api.spotify.com/v1/me/player/$action?device_id=${Uri.encode(device)}"
+        val requestBody = (body?.toString() ?: "").toRequestBody("application/json".toMediaType())
+        val request = Request.Builder().url(url).header("Authorization", "Bearer ${accessToken()}")
+            .method(if (action == "next" || action == "previous") "POST" else "PUT", requestBody).build()
+        http.newCall(request).execute().use { response ->
+            if (response.code == 401 && retry) { accessToken(true); return@withContext command(action, device, body, false) }
+            check(response.isSuccessful) {
+                when(response.code) {
+                    403 -> "Spotify denied playback. Check Premium, reconnect permissions, and your developer app's account access."
+                    404 -> "Open Spotify on your phone, play a song once, then refresh devices here."
+                    429 -> "Spotify rate limit: try again in ${response.header("Retry-After") ?: "a few"} seconds."
+                    else -> "Spotify playback failed (${response.code})."
+                }
+            }
+        }
+    }
     fun disconnect() { session = JSONObject().put("client_id", clientId); save() }
 }
+
+
+data class SpotifyDevice(val id: String, val name: String, val active: Boolean)

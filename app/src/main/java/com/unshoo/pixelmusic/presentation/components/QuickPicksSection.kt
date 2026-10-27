@@ -59,7 +59,8 @@ fun QuickPicksSection(
     onSeeAllClick: (() -> Unit)? = null,
     currentSongId: String? = null,
     displayMode: QuickPicksDisplayMode = QuickPicksDisplayMode.LIST,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    title: String = "Quick Picks"
 ) {
     if (songs.isEmpty()) return
     val visible = remember(songs) {
@@ -85,7 +86,7 @@ fun QuickPicksSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Quick Picks",
+                text = title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 6.dp)
@@ -293,3 +294,4 @@ private fun buildQuickPickRows(songs: List<Song>): List<QuickPicksPillRow> {
     }
     return rows
 }
+

@@ -25,7 +25,7 @@ jobs:
           cache-read-only: false
       - name: Test sender and build APK
         timeout-minutes: 25
-        run: ./gradlew :speaker-sender:testDebugUnitTest :app:assembleSpeakerPreview --stacktrace -Ppixelmusic.enableAbiSplits=true -PAPP_VERSION_CODE=4 -PAPP_VERSION_NAME=1.0-speaker-preview-4
+        run: ./gradlew :speaker-sender:testDebugUnitTest :app:assembleSpeakerPreview --stacktrace -Ppixelmusic.enableAbiSplits=true -PAPP_VERSION_CODE=5 -PAPP_VERSION_NAME=1.0-speaker-preview-5
       - name: Test audio queue
         run: ./gradlew :app:testDebugUnitTest --tests 'com.unshoo.pixelmusic.data.service.speakers.PcmQueueTest' --tests 'com.unshoo.pixelmusic.data.spotify.SpotifyTrackMatcherTest' --tests 'com.unshoo.pixelmusic.data.service.speakers.SonosGroupXmlTest' --stacktrace
       - name: Verify APK

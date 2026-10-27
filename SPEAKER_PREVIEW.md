@@ -99,3 +99,14 @@ RenderingControl SetVolume on that room. Actual room and group volumes are read
 back periodically, so physical-button or Sonos-app changes appear in PixelMusic.
 New slider gestures take precedence over stale polling results. Other, non-Sonos
 AirPlay/DLNA outputs retain a clearly labeled stream-level control.
+
+
+## Preview 5: Home, Spotify playback, Android Auto
+
+Home now promotes Recently Played after one track, refreshes discovery at the next hourly boundary while visible (or when reopened), seeds recommendations from library artists, filters owned songs, and uses subtle lifecycle-aware draw-only motion. Offline failures keep the last successful picks. Background motion honors Android animator-disable settings.
+
+Spotify library import remains available. The new Home Spotify panel plays original Spotify track URIs through the official Premium Web API on an available Spotify Connect device, not through PixelMusic's audio pipeline. Reconnect once in Settings → Import from Spotify to authorize playback scopes. Open Spotify and start a song once if the phone is not listed, then refresh devices. Choose a device, collection and track. The queue contains up to 100 tracks starting at the chosen track. Audio quality is controlled by Spotify/device settings; PixelMusic does not request a bitrate or guarantee lossless audio. This mode has separate controls and cannot feed the Wi-Fi PCM/Sonos sender, equalizer or crossfade. Developer app/account restrictions may still prevent playback.
+
+Android Auto media browsing already existed. Preview 5 organizes four top-level entries (Recently Played, Favorites, Playlists, Library), supplies content-style hints and fixes search completion notification. Install this APK on the phone, connect Android Auto, and select PixelMusic. For a sideloaded preview, open Android Auto settings, tap Version repeatedly to enable developer settings, enable Unknown sources, and reconnect. Spotify playback is handled by Spotify's own Android Auto app. The phone animation/UI is not mirrored into the car's driver-safe template. Car hardware testing remains outstanding.
+
+Swiping PixelMusic away now stops local playback and disconnects its Wi-Fi speakers. The Spotify control service attempts to pause its own device/track queue on swipe-away or Stop; it relinquishes control if another device/track takes over. Network failure or Android force-stop/process termination can prevent a remote pause: Spotify can then be paused in its app. Locking the phone or switching apps does not count as closing it.

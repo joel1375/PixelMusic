@@ -36,7 +36,7 @@ private const val KEY_SONGS = "songs_json"
 private const val KEY_CATEGORIES = "categories_json"
 private const val KEY_CACHE_TIMESTAMP = "cache_timestamp"
 // Cache valid for 4 hours (shorter than before so new releases appear faster)
-private const val CACHE_MAX_AGE_MS = 4 * 60 * 60 * 1000L
+private const val CACHE_MAX_AGE_MS = 60 * 60 * 1000L
 
 @HiltViewModel
 class QuickPicksViewModel @Inject constructor(
@@ -61,13 +61,15 @@ class QuickPicksViewModel @Inject constructor(
 
     private val prefs by lazy { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
+    private var loadJob: kotlinx.coroutines.Job? = null
+
     init {
         // Immediately populate from cache so the UI shows something on relaunch
         loadFromCache()
         viewModelScope.launch {
             userPreferencesRepository.discoverFlow.collect { _ ->
                 if (_selectedCategory.value == "All") {
-                    loadQuickPicks("All")
+                    refreshIfDue()
                 }
             }
         }
@@ -77,6 +79,14 @@ class QuickPicksViewModel @Inject constructor(
         if (_selectedCategory.value == category && !_isLoading.value) return
         _selectedCategory.value = category
         loadQuickPicks(category)
+    }
+
+    fun refreshIfDue() {
+        val now = System.currentTimeMillis()
+        val cached = prefs.getLong(KEY_CACHE_TIMESTAMP, 0)
+        if (_quickPicks.value.isEmpty() || now / CACHE_MAX_AGE_MS != cached / CACHE_MAX_AGE_MS) {
+            loadQuickPicks(_selectedCategory.value)
+        }
     }
 
     fun refresh() {
@@ -172,7 +182,8 @@ class QuickPicksViewModel @Inject constructor(
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun loadQuickPicks(category: String) {
-        viewModelScope.launch {
+        if (loadJob?.isActive == true) return
+        loadJob = viewModelScope.launch {
             if (_quickPicks.value.isEmpty()) {
                 _isLoading.value = true
             }
@@ -253,6 +264,8 @@ class QuickPicksViewModel @Inject constructor(
             emptyList()
         }
 
+        val librarySongs = withContext(Dispatchers.IO) { musicRepository.getAllSongsOnce() }
+        val librarySeeds = librarySongs.shuffled().take(40)
         val subscribedIds = userPreferencesRepository.subscribedArtistIdsFlow.first().toList()
 
         // Extract seed songs
@@ -283,6 +296,10 @@ class QuickPicksViewModel @Inject constructor(
             }
         }
 
+        librarySeeds.forEach { song ->
+            song.youtubeId?.takeIf { it.isNotBlank() }?.let { seedSongs.add(it to song.artist) }
+        }
+
         // Deduplicate seeds and select randomly for freshness on every load/refresh
         val uniqueSeedSongs = seedSongs.distinctBy { it.first }.shuffled()
 
@@ -290,6 +307,7 @@ class QuickPicksViewModel @Inject constructor(
         val seedArtistNames = mutableListOf<String>()
         val seedArtistIds = mutableListOf<String>()
 
+        librarySeeds.map { it.artist }.filter { it.isNotBlank() }.forEach { seedArtistNames.add(it) }
         subscribedIds.forEach { seedArtistIds.add(it) }
         localHistoryList.mapNotNull { it.artist }.filter { it.isNotBlank() }.forEach { seedArtistNames.add(it) }
         localFavoritesList.map { it.artist }.filter { it.isNotBlank() }.forEach { seedArtistNames.add(it) }
@@ -494,8 +512,15 @@ class QuickPicksViewModel @Inject constructor(
                 }
         }
 
-        // Shuffle completely to make it dynamic on every view/refresh
-        deduplicated.shuffled().take(20)
+        // Discovery means unfamiliar music, not a second row of owned songs.
+        val knownIds = librarySongs.map { it.youtubeId ?: it.id }.toSet()
+        val knownNames = librarySongs.map { "${it.title.lowercase()}|${it.artist.lowercase()}" }.toSet()
+        val previousIds = _quickPicks.value.map { it.youtubeId ?: it.id }.toSet()
+        val discoveries = deduplicated.filter {
+            (it.youtubeId ?: it.id) !in knownIds && "${it.title.lowercase()}|${it.artist.lowercase()}" !in knownNames
+        }.shuffled()
+        (discoveries.filter { (it.youtubeId ?: it.id) !in previousIds } +
+            discoveries.filter { (it.youtubeId ?: it.id) in previousIds }).take(20)
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -535,3 +560,4 @@ class QuickPicksViewModel @Inject constructor(
         }
     }
 }
+

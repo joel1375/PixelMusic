@@ -28,6 +28,7 @@ class AutoMediaBrowseTree @Inject constructor(
 
     companion object {
         const val ROOT_ID = "ROOT"
+        const val LIBRARY_ID = "LIBRARY"
         const val RECENT_ID = "RECENT"
         const val FAVORITES_ID = "FAVORITES"
         const val PLAYLISTS_ID = "PLAYLISTS"
@@ -59,9 +60,7 @@ class AutoMediaBrowseTree @Inject constructor(
             buildBrowsableItem(RECENT_ID, "Recently Played", null, MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
             buildBrowsableItem(FAVORITES_ID, "Favorites", null, MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
             buildBrowsableItem(PLAYLISTS_ID, "Playlists", null, MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS),
-            buildBrowsableItem(ALBUMS_ID, "Albums", null, MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS),
-            buildBrowsableItem(ARTISTS_ID, "Artists", null, MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS),
-            buildBrowsableItem(SONGS_ID, "All Songs", null, MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+            buildBrowsableItem(LIBRARY_ID, "Library", null, MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
         )
     }
 
@@ -73,7 +72,12 @@ class AutoMediaBrowseTree @Inject constructor(
             .toInt()
 
         return when (parentId) {
-            ROOT_ID -> getRootItems()
+            ROOT_ID -> getRootItems().drop(offset).take(effectivePageSize)
+            LIBRARY_ID -> listOf(
+                buildBrowsableItem(ALBUMS_ID, "Albums", null, MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS),
+                buildBrowsableItem(ARTISTS_ID, "Artists", null, MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS),
+                buildBrowsableItem(SONGS_ID, "All Songs", null, MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+            ).drop(offset).take(effectivePageSize)
             RECENT_ID -> getRecentSongs(offset, effectivePageSize)
             FAVORITES_ID -> getFavoriteSongs(offset, effectivePageSize)
             PLAYLISTS_ID -> getPlaylists(offset, effectivePageSize)
@@ -87,6 +91,10 @@ class AutoMediaBrowseTree @Inject constructor(
     suspend fun getItem(mediaId: String): MediaItem? {
         return when {
             mediaId == ROOT_ID -> buildBrowsableItem(ROOT_ID, "PixelMusic", null, MediaMetadata.MEDIA_TYPE_MUSIC)
+            mediaId == LIBRARY_ID -> buildBrowsableItem(LIBRARY_ID, "Library", null, MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+            mediaId == ALBUMS_ID -> buildBrowsableItem(ALBUMS_ID, "Albums", null, MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS)
+            mediaId == ARTISTS_ID -> buildBrowsableItem(ARTISTS_ID, "Artists", null, MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS)
+            mediaId == SONGS_ID -> buildBrowsableItem(SONGS_ID, "All Songs", null, MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
             mediaId == RECENT_ID || mediaId == FAVORITES_ID || mediaId == PLAYLISTS_ID ||
                     mediaId == ALBUMS_ID || mediaId == ARTISTS_ID || mediaId == SONGS_ID -> {
                 getRootItems().find { it.mediaId == mediaId }
@@ -254,6 +262,10 @@ class AutoMediaBrowseTree @Inject constructor(
             .setTitle(title)
             .setIsBrowsable(true)
             .setIsPlayable(false)
+            .setExtras(Bundle().apply {
+                putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 2)
+                putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1)
+            })
             .setMediaType(mediaType)
         artworkUri?.let { metadata.setArtworkUri(it) }
 
@@ -339,3 +351,4 @@ class AutoMediaBrowseTree @Inject constructor(
             .build()
     }
 }
+
