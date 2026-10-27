@@ -1,4 +1,4 @@
-name: Speaker preview APK
+name: Spotify-only APK
 on:
   pull_request:
     branches: [master]
@@ -11,38 +11,34 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
-      - name: Inspect available Android SDK packages
-        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list | awk "/platforms;android-|build-tools;/"'
       - uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: false
-      - name: Test sender and build APK
-        timeout-minutes: 25
-        run: ./gradlew :speaker-sender:testDebugUnitTest :app:assembleSpeakerPreview --stacktrace -Ppixelmusic.enableAbiSplits=true -PAPP_VERSION_CODE=5 -PAPP_VERSION_NAME=1.0-speaker-preview-5
-      - name: Test audio queue
-        run: ./gradlew :app:testDebugUnitTest --tests 'com.unshoo.pixelmusic.data.service.speakers.PcmQueueTest' --tests 'com.unshoo.pixelmusic.data.spotify.SpotifyTrackMatcherTest' --tests 'com.unshoo.pixelmusic.data.service.speakers.SonosGroupXmlTest' --tests 'com.unshoo.pixelmusic.data.discovery.HourlyDiscoveryPolicyTest' --tests 'com.unshoo.pixelmusic.data.spotify.SpotifyPlaybackOwnershipTest' --stacktrace
-      - name: Verify APK
+      - name: Test mixes and build Spotify-only APK
+        run: ./gradlew :spotify:testDebugUnitTest :spotify:assembleRelease --stacktrace
+      - name: Verify signature and Spotify-only package
         run: |
-          APK=app/build/outputs/apk/speakerPreview/app-arm64-v8a-speakerPreview.apk
+          APK=spotify/build/outputs/apk/release/spotify-release.apk
           BUILD_TOOLS_VERSION="$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
           "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" dex packages --defined-only "$APK" > apk-packages.txt
+          if grep -Ei 'newpipe|innertube|youtube|airsonic|exoplayer|telegram' apk-packages.txt; then exit 1; fi
       - uses: actions/upload-artifact@v7
         with:
-          name: PixelMusic-speaker-preview-arm64
-          path: app/build/outputs/apk/speakerPreview/app-arm64-v8a-speakerPreview.apk
+          name: PixelMusic-Spotify-only
+          path: spotify/build/outputs/apk/release/spotify-release.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: speaker-test-reports
+          name: spotify-test-reports
           path: |
-            speaker-sender/build/reports/tests/
-            app/build/reports/tests/
-
+            spotify/build/reports/tests/
+            apk-packages.txt
