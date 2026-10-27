@@ -24,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -201,14 +202,14 @@ private fun App(model: MusicModel) {
                     repeat(3) { index ->
                         val mix=state.mixes.getOrNull(index)
                         Column(Modifier.weight(1f)) {
-                            Card(onClick={mix?.let(model::openMix)},enabled=mix?.tracks?.isNotEmpty()==true,modifier=Modifier.fillMaxWidth().aspectRatio(.82f),shape=RoundedCornerShape(22.dp)) {
+                            Card(onClick={mix?.let(model::openMix)},enabled=mix?.tracks?.isNotEmpty()==true,modifier=Modifier.fillMaxWidth().aspectRatio(.82f).alpha(if(mix?.tracks?.isNotEmpty()==true) 1f else .45f),shape=RoundedCornerShape(22.dp)) {
                                 Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(colors[index],colors[index].copy(alpha=.7f)))).padding(14.dp)) {
                                     Icon(listOf(Icons.Rounded.Waves,Icons.Rounded.BlurOn,Icons.Rounded.GraphicEq)[index],null,Modifier.size(26.dp).align(Alignment.TopStart),tint=Color(0xFF263229))
                                     Text("0${index+1}",Modifier.align(Alignment.BottomStart),fontSize=36.sp,fontWeight=FontWeight.Light,color=Color(0xFF172019))
                                 }
                             }
                             Spacer(Modifier.height(10.dp)); Text("Daily Mix ${index+1}",style=MaterialTheme.typography.titleSmall)
-                            Text(mix?.subtitle ?: if(state.busy) "Building…" else "Add Spotify favorites",style=MaterialTheme.typography.bodySmall,maxLines=2,overflow=TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if(mix?.tracks?.isNotEmpty()==true) mix.subtitle else if(state.busy) "Building…" else "Save more favorites",style=MaterialTheme.typography.bodySmall,maxLines=2,overflow=TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)
                             if(mix!=null) Text("${mix.tracks.size-mix.discoveries} saved · ${mix.discoveries} finds",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }

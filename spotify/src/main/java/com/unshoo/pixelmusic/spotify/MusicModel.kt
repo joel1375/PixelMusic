@@ -144,6 +144,7 @@ class MusicModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun play(tracks: List<SpotifyTrack>, start: SpotifyTrack? = tracks.firstOrNull()) {
+        if (playback.value.busy) return
         val device = state.value.device
         if (device == null) { error("Open Spotify and play once, then refresh Devices to select your phone or speaker."); return }
         val uris = tracks.dropWhile { it.uri != start?.uri }.take(100).map { it.uri }
